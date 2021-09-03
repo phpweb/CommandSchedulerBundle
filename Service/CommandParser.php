@@ -10,6 +10,7 @@ use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\StreamOutput;
 use Symfony\Component\ErrorHandler\Debug;
 use Symfony\Component\HttpKernel\KernelInterface;
+use Symfony\Component\ErrorHandler\Debug;
 
 /**
  * Class CommandParser
@@ -86,6 +87,7 @@ class CommandParser
                 '--env' => $env,
             ]
         );
+        Debug::enable();
 
         try {
             Debug::enable();
