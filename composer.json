@@ -47,5 +47,10 @@
         "psr-4": {
             "App\\Tests\\": "Tests/"
         }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "3.x-dev"
+        }
     }
 }
