@@ -1,10 +1,9 @@
 <?php
 
-namespace JMose\CommandSchedulerBundle\Controller;
+namespace Dukecity\CommandSchedulerBundle\Controller;
 
-use JMose\CommandSchedulerBundle\Entity\ScheduledCommand;
-use JMose\CommandSchedulerBundle\Form\Type\ScheduledCommandType;
-use Symfony\Component\Form\Form;
+use Dukecity\CommandSchedulerBundle\Entity\ScheduledCommand;
+use Dukecity\CommandSchedulerBundle\Form\Type\ScheduledCommandType;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -13,112 +12,46 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * @author  Julien Guyon <julienguyon@hotmail.com>
  */
-class DetailController extends BaseController
+class DetailController extends AbstractBaseController
 {
     /**
      * Handle display of new/existing ScheduledCommand object.
-     * This action should not be invoke directly.
      *
-     * @param ScheduledCommand $scheduledCommand
-     * @param Form             $scheduledCommandForm
-     *
-     * @return Response
-     */
-    public function indexAction(ScheduledCommand $scheduledCommand, Form $scheduledCommandForm = null)
-    {
-        if (null === $scheduledCommandForm) {
-            $scheduledCommandForm = $this->createForm(ScheduledCommandType::class, $scheduledCommand);
-        }
-
-        return $this->render(
-            '@JMoseCommandScheduler/Detail/index.html.twig',
-            [
-                'scheduledCommandForm' => $scheduledCommandForm->createView(),
-            ]
-        );
-    }
-
-    /**
-     * Initialize a new ScheduledCommand object and forward to the index action (view).
+     * @param Request               $request
+     * @param ScheduledCommand|null $scheduledCommand
      *
      * @return Response
      */
-    public function initNewScheduledCommandAction()
+    public function edit(Request $request, ScheduledCommand $scheduledCommand = null): Response
     {
-        $scheduledCommand = new ScheduledCommand();
-
-        return $this->forward(
-            self::class.'::indexAction',
-            [
-                'scheduledCommand' => $scheduledCommand,
-            ]
-        );
-    }
-
-    /**
-     * Get a ScheduledCommand object with its id and forward it to the index action (view).
-     *
-     * @param $scheduledCommandId
-     *
-     * @return Response
-     */
-    public function initEditScheduledCommandAction($scheduledCommandId)
-    {
-        $scheduledCommand = $this->getDoctrineManager()->getRepository(ScheduledCommand::class)
-            ->find($scheduledCommandId);
-
-        return $this->forward(
-            self::class.'::indexAction',
-            [
-                'scheduledCommand' => $scheduledCommand,
-            ]
-        );
-    }
-
-    /**
-     * Handle save after form is submit and forward to the index action (view).
-     *
-     * @param Request $request
-     *
-     * @return Response
-     */
-    public function saveAction(Request $request)
-    {
-        $entityManager = $this->getDoctrineManager();
-
-        // Init and populate form object
-        $commandDetail = $request->request->get('command_scheduler_detail');
-        if ('' != $commandDetail['id']) {
-            $scheduledCommand = $entityManager->getRepository(ScheduledCommand::class)
-                ->find($commandDetail['id']);
-        } else {
+        if (!$scheduledCommand) {
             $scheduledCommand = new ScheduledCommand();
         }
 
-        $scheduledCommandForm = $this->createForm(ScheduledCommandType::class, $scheduledCommand);
-        $scheduledCommandForm->handleRequest($request);
+        $form = $this->createForm(ScheduledCommandType::class, $scheduledCommand);
+        $form->handleRequest($request);
 
-        if ($scheduledCommandForm->isSubmitted() && $scheduledCommandForm->isValid()) {
-            // Handle save to the database
-            if (null === $scheduledCommand->getId()) {
-                $entityManager->persist($scheduledCommand);
+        if ($form->isSubmitted() && $form->isValid()) {
+            // check if we have an xml-read error for commands
+            if ('error' == $scheduledCommand->getCommand()) {
+                $this->addFlash('error', 'ERROR: please check php bin/console list --format=xml');
+
+                return $this->redirectToRoute('dukecity_command_scheduler_list');
             }
-            $entityManager->flush();
+
+            $em = $this->getDoctrine()->getManager();
+            $em->persist($scheduledCommand);
+            $em->flush();
 
             // Add a flash message and do a redirect to the list
-            $this->get('session')->getFlashBag()
-                ->add('success', $this->translator->trans('flash.success', [], 'JMoseCommandScheduler'));
+            $this->addFlash('success', $this->translator->trans('flash.success', [], 'DukecityCommandScheduler'));
 
-            return $this->redirect($this->generateUrl('jmose_command_scheduler_list'));
+            return $this->redirectToRoute('dukecity_command_scheduler_list');
         }
 
-        // Redirect to indexAction with the form object that has validation errors
-        return $this->forward(
-            self::class.'::indexAction',
-            [
-                'scheduledCommand' => $scheduledCommand,
-                'scheduledCommandForm' => $scheduledCommandForm,
-            ]
+        return $this->render(
+            '@DukecityCommandScheduler/Detail/index.html.twig',
+            ['scheduledCommandForm' => $form->createView()]
         );
     }
 }

@@ -1,10 +1,11 @@
 <?php
 
-namespace JMose\CommandSchedulerBundle\Validator\Constraints;
+namespace Dukecity\CommandSchedulerBundle\Validator\Constraints;
 
 use Cron\CronExpression as CronExpressionLib;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\ConstraintValidator;
+use Dukecity\CommandSchedulerBundle\Validator\Constraints\CronExpression;
 
 /**
  * Class CronExpressionValidator.
@@ -17,7 +18,7 @@ class CronExpressionValidator extends ConstraintValidator
      * @param mixed      $value
      * @param Constraint $constraint
      */
-    public function validate($value, Constraint $constraint)
+    public function validate(mixed $value, Constraint $constraint): void
     {
         $value = (string) $value;
 
@@ -25,10 +26,17 @@ class CronExpressionValidator extends ConstraintValidator
             return;
         }
 
+       if(!($constraint instanceof CronExpression)){
+           return;
+       }
+
         try {
-            CronExpressionLib::factory($value);
-        } catch (\InvalidArgumentException $e) {
-            $this->context->addViolation($constraint->message, [], $value);
+            new CronExpressionLib($value);
+        } catch (\InvalidArgumentException) {
+
+            $this->context->buildViolation($constraint->message)
+                ->setParameter('{{ string }}', $value)
+                ->addViolation();
         }
     }
 }

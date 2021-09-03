@@ -1,4 +1,4 @@
-jmose_command_scheduler:
+dukecity_command_scheduler:
     log_path: build
     excluded_command_namespaces: []
     included_command_namespaces:

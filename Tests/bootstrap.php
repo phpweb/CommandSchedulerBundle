@@ -1,4 +1,4 @@
-<?php
+<?php /** @noinspection ALL */
 
 use Doctrine\Common\Annotations\AnnotationRegistry;
 
@@ -6,6 +6,7 @@ $file = __DIR__.'/../vendor/autoload.php';
 if (!file_exists($file)) {
     throw new RuntimeException('Install dependencies to run test suite.');
 }
+/** @noinspection PhpIncludeInspection */
 $autoload = require $file;
 
 if (is_dir(__DIR__.'/../build')) {
@@ -21,7 +22,7 @@ if (is_dir(__DIR__.'/../build')) {
     }
 } else {
     // Creating the build dir, to output some potential datas, and the code coverage if wanted
-    mkdir(__DIR__.'/../build', 0777);
+    mkdir(__DIR__.'/../build');
 }
 
 // Registers automatically all doctrine annotations when required

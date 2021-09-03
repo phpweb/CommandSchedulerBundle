@@ -1,95 +1,107 @@
 <?php
 
-namespace JMose\CommandSchedulerBundle\Entity;
+namespace Dukecity\CommandSchedulerBundle\Entity;
+
+use Carbon\Carbon;
+use Cron\CronExpression as CronExpressionLib;
+use DateTime;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping as ORM;
+use Dukecity\CommandSchedulerBundle\Repository\ScheduledCommandRepository;
+use JetBrains\PhpStorm\Pure;
+use phpDocumentor\Reflection\Types\Integer;
+use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
+use Symfony\Component\Validator\Constraints as Assert;
+use Dukecity\CommandSchedulerBundle\Validator\Constraints as AssertDukecity;
 
 /**
- * Entity ScheduledCommand.
- *
+ * https://www.doctrine-project.org/2021/05/24/orm2.9.html
  * @author  Julien Guyon <julienguyon@hotmail.com>
  */
+#[ORM\Entity(repositoryClass: ScheduledCommandRepository::class)]
+#[ORM\Table(name: "scheduled_command")]
+#[UniqueEntity(fields: ["name"])]
 class ScheduledCommand
 {
-    /**
-     * @var int
-     */
-    private $id;
+    #[ORM\Id, ORM\Column(type: Types::INTEGER), ORM\GeneratedValue(strategy: 'AUTO')]
+    private $id; # temporary, otherwise EasyAdminBundle could not create new entries
+    #private ?int $id = null;
 
-    /**
-     * @var string
-     */
-    private $name;
+    // see https://www.doctrine-project.org/projects/doctrine-orm/en/2.9/reference/transactions-and-concurrency.html
+    #[ORM\Version()]
+    #[ORM\Column(type: Types::INTEGER)]
+    private int $version = 0;
 
-    /**
-     * @var string
-     */
-    private $command;
+    #[ORM\Column(name: "created_at", type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?DateTime $createdAt = null;
 
-    /**
-     * @var string
-     */
-    private $arguments;
+    #[Assert\NotBlank]
+    #[ORM\Column(type: Types::STRING, length: 150, unique: true, nullable: false)]
+    private string $name;
+
+    #[Assert\NotBlank]
+    #[ORM\Column(type: Types::STRING, length: 200, nullable: false)]
+    private string $command;
+
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $arguments = null;
 
     /**
      * @see http://www.abunchofutils.com/utils/developer/cron-expression-helper/
-     *
-     * @var string
      */
-    private $cronExpression;
+    #[Assert\NotBlank]
+    #[AssertDukecity\CronExpression]
+    #[ORM\Column(type: Types::STRING, length: 200, nullable: true)]
+    private string $cronExpression;
 
-    /**
-     * @var \DateTime
-     */
-    private $lastExecution;
+    #[Assert\Type(DateTime::class)]
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?DateTime $lastExecution = null;
 
-    /**
-     * @var int
-     */
-    private $lastReturnCode;
+    #[ORM\Column(type: Types::INTEGER, nullable: true)]
+    private ?int $lastReturnCode = null;
 
-    /**
-     * Log's file name (without path).
-     *
-     * @var string
-     */
-    private $logFile;
+    /** Log's file name (without path). */
+    #[ORM\Column(type: Types::STRING, length: 150, nullable: true)]
+    private ?string $logFile = null;
 
-    /**
-     * @var int
-     */
-    private $priority;
+    ##[Assert\Type(Integer::class)]
+    #[ORM\Column(type: Types::INTEGER, nullable: false)]
+    private int $priority;
 
-    /**
-     * If true, command will be execute next time regardless cron expression.
-     *
-     * @var bool
-     */
-    private $executeImmediately;
+    /** If true, command will be execute next time regardless cron expression. */
+    #[ORM\Column(type: Types::BOOLEAN, nullable: false)]
+    private bool $executeImmediately = false;
 
-    /**
-     * @var bool
-     */
-    private $disabled;
+    #[ORM\Column(type: Types::BOOLEAN, nullable: false)]
+    private bool $disabled = false;
 
-    /**
-     * @var bool
-     */
-    private $locked;
+    #[ORM\Column(type: Types::BOOLEAN, nullable: false)]
+    private bool $locked = false;
 
     /**
      * Init new ScheduledCommand.
      */
     public function __construct()
     {
-        $this->setLastExecution(new \DateTime());
+        $this->createdAt = new DateTime();
+        #$this->setLastExecution(new DateTime());
+        $this->lastExecution = null;
         $this->setLocked(false);
+        $this->priority = 0;
+        $this->version = 1;
+    }
+
+    #[Pure]
+    public function __toString(): string
+    {
+        return $this->getName();
     }
 
     /**
      * Get id.
-     *
-     * @return int
      */
-    public function getId()
+    public function getId(): ?int
     {
         return $this->id;
     }
@@ -97,11 +109,11 @@ class ScheduledCommand
     /**
      * Set id.
      *
-     * @param $id
+     * @param int $id
      *
-     * @return $this
+     * @return ScheduledCommand
      */
-    public function setId($id)
+    public function setId(int $id): ScheduledCommand
     {
         $this->id = $id;
 
@@ -110,10 +122,8 @@ class ScheduledCommand
 
     /**
      * Get name.
-     *
-     * @return string
      */
-    public function getName()
+    public function getName(): ?string
     {
         return $this->name;
     }
@@ -125,7 +135,7 @@ class ScheduledCommand
      *
      * @return ScheduledCommand
      */
-    public function setName($name)
+    public function setName(string $name): ScheduledCommand
     {
         $this->name = $name;
 
@@ -134,10 +144,8 @@ class ScheduledCommand
 
     /**
      * Get command.
-     *
-     * @return string
      */
-    public function getCommand()
+    public function getCommand(): ?string
     {
         return $this->command;
     }
@@ -149,7 +157,7 @@ class ScheduledCommand
      *
      * @return ScheduledCommand
      */
-    public function setCommand($command)
+    public function setCommand(string $command): ScheduledCommand
     {
         $this->command = $command;
 
@@ -158,10 +166,8 @@ class ScheduledCommand
 
     /**
      * Get arguments.
-     *
-     * @return string
      */
-    public function getArguments()
+    public function getArguments(): ?string
     {
         return $this->arguments;
     }
@@ -169,11 +175,11 @@ class ScheduledCommand
     /**
      * Set arguments.
      *
-     * @param string $arguments
+     * @param string|null $arguments
      *
      * @return ScheduledCommand
      */
-    public function setArguments($arguments)
+    public function setArguments(?string $arguments): ScheduledCommand
     {
         $this->arguments = $arguments;
 
@@ -182,10 +188,8 @@ class ScheduledCommand
 
     /**
      * Get cronExpression.
-     *
-     * @return string
      */
-    public function getCronExpression()
+    public function getCronExpression(): ?string
     {
         return $this->cronExpression;
     }
@@ -197,7 +201,7 @@ class ScheduledCommand
      *
      * @return ScheduledCommand
      */
-    public function setCronExpression($cronExpression)
+    public function setCronExpression(string $cronExpression): ScheduledCommand
     {
         $this->cronExpression = $cronExpression;
 
@@ -206,10 +210,8 @@ class ScheduledCommand
 
     /**
      * Get lastExecution.
-     *
-     * @return \DateTime
      */
-    public function getLastExecution()
+    public function getLastExecution(): ?DateTime
     {
         return $this->lastExecution;
     }
@@ -217,11 +219,11 @@ class ScheduledCommand
     /**
      * Set lastExecution.
      *
-     * @param \DateTime $lastExecution
+     * @param DateTime $lastExecution
      *
      * @return ScheduledCommand
      */
-    public function setLastExecution($lastExecution)
+    public function setLastExecution(DateTime $lastExecution): ScheduledCommand
     {
         $this->lastExecution = $lastExecution;
 
@@ -230,10 +232,8 @@ class ScheduledCommand
 
     /**
      * Get logFile.
-     *
-     * @return string
      */
-    public function getLogFile()
+    public function getLogFile(): ?string
     {
         return $this->logFile;
     }
@@ -245,7 +245,7 @@ class ScheduledCommand
      *
      * @return ScheduledCommand
      */
-    public function setLogFile($logFile)
+    public function setLogFile(string $logFile): ScheduledCommand
     {
         $this->logFile = $logFile;
 
@@ -254,10 +254,8 @@ class ScheduledCommand
 
     /**
      * Get lastReturnCode.
-     *
-     * @return int
      */
-    public function getLastReturnCode()
+    public function getLastReturnCode(): ?int
     {
         return $this->lastReturnCode;
     }
@@ -265,11 +263,11 @@ class ScheduledCommand
     /**
      * Set lastReturnCode.
      *
-     * @param int $lastReturnCode
+     * @param int|null $lastReturnCode
      *
      * @return ScheduledCommand
      */
-    public function setLastReturnCode($lastReturnCode)
+    public function setLastReturnCode(?int $lastReturnCode): ScheduledCommand
     {
         $this->lastReturnCode = $lastReturnCode;
 
@@ -278,10 +276,8 @@ class ScheduledCommand
 
     /**
      * Get priority.
-     *
-     * @return int
      */
-    public function getPriority()
+    public function getPriority(): int
     {
         return $this->priority;
     }
@@ -293,7 +289,7 @@ class ScheduledCommand
      *
      * @return ScheduledCommand
      */
-    public function setPriority($priority)
+    public function setPriority(int $priority): ScheduledCommand
     {
         $this->priority = $priority;
 
@@ -302,20 +298,16 @@ class ScheduledCommand
 
     /**
      * Get executeImmediately.
-     *
-     * @return bool
      */
-    public function isExecuteImmediately()
+    public function isExecuteImmediately(): bool
     {
         return $this->executeImmediately;
     }
 
     /**
      * Get executeImmediately.
-     *
-     * @return bool
      */
-    public function getExecuteImmediately()
+    public function getExecuteImmediately(): bool
     {
         return $this->executeImmediately;
     }
@@ -323,11 +315,11 @@ class ScheduledCommand
     /**
      * Set executeImmediately.
      *
-     * @param $executeImmediately
+     * @param bool $executeImmediately
      *
      * @return ScheduledCommand
      */
-    public function setExecuteImmediately($executeImmediately)
+    public function setExecuteImmediately(bool $executeImmediately): ScheduledCommand
     {
         $this->executeImmediately = $executeImmediately;
 
@@ -336,20 +328,16 @@ class ScheduledCommand
 
     /**
      * Get disabled.
-     *
-     * @return bool
      */
-    public function isDisabled()
+    public function isDisabled(): ?bool
     {
         return $this->disabled;
     }
 
     /**
      * Get disabled.
-     *
-     * @return bool
      */
-    public function getDisabled()
+    public function getDisabled(): ?bool
     {
         return $this->disabled;
     }
@@ -361,7 +349,7 @@ class ScheduledCommand
      *
      * @return ScheduledCommand
      */
-    public function setDisabled($disabled)
+    public function setDisabled(bool $disabled): ScheduledCommand
     {
         $this->disabled = $disabled;
 
@@ -370,20 +358,16 @@ class ScheduledCommand
 
     /**
      * Locked Getter.
-     *
-     * @return bool
      */
-    public function isLocked()
+    public function isLocked(): ?bool
     {
         return $this->locked;
     }
 
     /**
      * locked Getter.
-     *
-     * @return bool
      */
-    public function getLocked()
+    public function getLocked(): ?bool
     {
         return $this->locked;
     }
@@ -393,12 +377,65 @@ class ScheduledCommand
      *
      * @param bool $locked
      *
-     * @return $this
+     * @return ScheduledCommand
      */
-    public function setLocked($locked)
+    public function setLocked(bool $locked): ScheduledCommand
     {
         $this->locked = $locked;
 
         return $this;
+    }
+
+    /**
+     * @return ?DateTime
+     */
+    public function getCreatedAt(): ?DateTime
+    {
+        return $this->createdAt;
+    }
+
+    /**
+     * @param DateTime $createdAt
+     * @return DateTime
+     */
+    public function setCreatedAt(DateTime $createdAt): DateTime
+    {
+        $this->createdAt = $createdAt;
+    }
+
+    /**
+     * Returns the next run time of the scheduled command
+     * @param bool $checkExecuteImmediately Check if immediately execution is set
+     *
+     * @return DateTime|null
+     *
+     * @throws \Exception
+     */
+    public function getNextRunDate(bool $checkExecuteImmediately = true): ?DateTime
+    {
+        if($this->getDisabled() || $this->getLocked())
+        {return null;}
+
+        if ($checkExecuteImmediately && $this->getExecuteImmediately()) {
+            return new DateTime();
+        }
+
+        return (new CronExpressionLib($this->getCronExpression()))->getNextRunDate();
+    }
+
+    /**
+     * Get a human readable format of the next run of the scheduled command
+     * @example 3 minutes
+     * @return string|null
+     */
+    public function getNextRunDateForHumans(): ?string
+    {
+        try{
+            return Carbon::instance($this->getNextRunDate())->diffForHumans();
+        }
+        catch (\Exception)
+        {}
+
+        return null;
     }
 }

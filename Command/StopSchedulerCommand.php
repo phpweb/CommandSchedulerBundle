@@ -1,7 +1,10 @@
-<?php
+<?php /** @noinspection ALL */
 
-namespace JMose\CommandSchedulerBundle\Command;
+/** @noinspection PhpComposerExtensionStubsInspection */
 
+namespace Dukecity\CommandSchedulerBundle\Command;
+
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -13,25 +16,39 @@ use Symfony\Component\Console\Output\OutputInterface;
  *
  * Adaption to CommandSchedulerBundle by Christoph Singer <singer@webagentur72.de>
  */
+#[AsCommand(name: 'scheduler:stop', description: 'Stops command scheduler')]
 class StopSchedulerCommand extends Command
 {
+    const SUCCESS = 0;
+    const FAILURE = 1;
+
+    /**
+     * @var string
+     */
+    protected static $defaultName = 'scheduler:stop';
     /**
      * {@inheritdoc}
      */
-    protected function configure()
+    protected function configure(): void
     {
-        $this->setName('scheduler:stop')
-            ->setDescription('Stops command scheduler');
+        $this->setDescription('Stops command scheduler')
+        ->setHelp(<<<'HELP'
+The <info>%command.name%</info> stopps the manual scheduler which was startet via <comment>scheduler:start</comment>
+
+HELP
+        );
     }
 
     /**
      * {@inheritdoc}
      */
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $pidFile = sys_get_temp_dir().DIRECTORY_SEPARATOR.StartSchedulerCommand::PID_FILE;
         if (!file_exists($pidFile)) {
-            return 0;
+            $output->writeln(sprintf('<info>%s</info>', 'Command scheduler is not running'));
+
+            return self::SUCCESS;
         }
         if (!extension_loaded('pcntl')) {
             throw new \RuntimeException('This command needs the pcntl extension to run.');
@@ -42,11 +59,11 @@ class StopSchedulerCommand extends Command
             }
             $output->writeln(sprintf('<comment>%s</comment>', 'Unable to kill command scheduler process. Scheduler will be stopped before the next run.'));
 
-            return 0;
+            return self::SUCCESS;
         }
         unlink($pidFile);
         $output->writeln(sprintf('<info>%s</info>', 'Command scheduler is stopped.'));
 
-        return 0;
+        return self::SUCCESS;
     }
 }

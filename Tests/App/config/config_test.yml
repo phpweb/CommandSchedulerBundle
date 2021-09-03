@@ -12,40 +12,59 @@ framework:
     validation:      { enable_annotations: true }
     session:
         storage_id: session.storage.filesystem
+        #storage_id: session.storage.mock_file
+        #name: MOCKSESSION
+    profiler:
+        enabled: true
+        collect: true
+
+#liip_functional_test: ~
 
 doctrine:
     dbal:
         driver:   pdo_sqlite
-        dbname:   jmose_command_scheduler_test
+        dbname:   dukecity_command_scheduler_test
         user:     root
         charset:  UTF8
         path:     "%database_path%"
+        url:      null
     orm:
         auto_generate_proxy_classes: true
-        auto_mapping: true
+        auto_mapping: false
+        naming_strategy: doctrine.orm.naming_strategy.underscore_number_aware
+        mappings:
+            # added for type: "attribute"
+            Dukecity\CommandSchedulerBundle:
+                type: attribute
+                dir: '%kernel.project_dir%/Entity'
+                is_bundle: false
+                prefix: Dukecity\CommandSchedulerBundle\Entity
+                alias: CommandSchedulerBundle
 
-security:
-    firewalls:
-        secured_area:
-            pattern:    ^/
-            anonymous:  true
-    providers:
-        in_memory:
-             memory: ~
-
-jmose_command_scheduler:
+dukecity_command_scheduler:
     lock_timeout: 300
     excluded_command_namespaces:
         - scheduler
 
-liip_functional_test:
-    command_decoration: false
+#liip_functional_test:
+#    command_decoration: false
 
 liip_test_fixtures:
     cache_db:
         sqlite: liip_test_fixtures.services_database_backup.sqlite
 
 services:
-    JMose\CommandSchedulerBundle\Fixtures\ORM\:
+    # default configuration for services in *this* file
+    _defaults:
+        # automatically injects dependencies in your services
+        autowire: true
+        # automatically registers your services as commands, event subscribers, etc.
+        autoconfigure: true
+        # this means you cannot fetch services directly from the container via $container->get()
+        # if you need to do this, you can override this setting on individual services
+        public: true
+
+    Dukecity\CommandSchedulerBundle\Fixtures\ORM\:
         resource: '../../../Fixtures/ORM/*'
         tags: ['doctrine.fixture.orm']
+

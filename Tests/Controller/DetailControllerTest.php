@@ -1,27 +1,39 @@
-<?php
+<?php /** @noinspection PhpCSValidationInspection */
 
-namespace JMose\CommandSchedulerBundle\Tests\Controller;
+namespace Dukecity\CommandSchedulerBundle\Tests\Controller;
 
-use JMose\CommandSchedulerBundle\Fixtures\ORM\LoadScheduledCommandData;
-use Liip\FunctionalTestBundle\Test\WebTestCase;
-use Liip\TestFixturesBundle\Test\FixturesTrait;
+use Dukecity\CommandSchedulerBundle\Entity\ScheduledCommand;
+use Dukecity\CommandSchedulerBundle\Fixtures\ORM\LoadScheduledCommandData;
+use Liip\TestFixturesBundle\Services\DatabaseToolCollection;
+use Liip\TestFixturesBundle\Services\DatabaseTools\AbstractDatabaseTool;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 
 /**
  * Class DetailControllerTest.
  */
 class DetailControllerTest extends WebTestCase
 {
-    use FixturesTrait;
+    protected AbstractDatabaseTool $databaseTool;
+    private KernelBrowser $client;
 
+    /**
+     * {@inheritdoc}
+     */
+    public function setUp(): void
+    {
+        $this->client = self::createClient();
+        $this->client->followRedirects(true);
+
+        $this->databaseTool = $this->client->getContainer()->get(DatabaseToolCollection::class)->get();
+    }
+    
     /**
      * Test "Create a new command" button.
      */
     public function testInitNewScheduledCommand()
     {
-        $client = parent::createClient();
-        $this->loadFixtures([]);
-
-        $crawler = $client->request('GET', '/command-scheduler/detail/new');
+        $crawler = $this->client->request('GET', '/command-scheduler/detail/edit');
         $this->assertEquals(1, $crawler->filter('button[id="command_scheduler_detail_save"]')->count());
     }
 
@@ -30,18 +42,17 @@ class DetailControllerTest extends WebTestCase
      */
     public function testInitEditScheduledCommand()
     {
-        $client = parent::createClient();
         // DataFixtures create 4 records
-        $this->loadFixtures([LoadScheduledCommandData::class]);
+        $this->databaseTool->loadFixtures([LoadScheduledCommandData::class]);
 
-        $crawler = $client->request('GET', '/command-scheduler/detail/edit/1');
-        $this->assertEquals(1, $crawler->filter('button[id="command_scheduler_detail_save"]')->count());
+        $crawler = $this->client->request('GET', '/command-scheduler/detail/edit/1');
+
+        $this->assertEquals(1, $crawler->filterXPath('//button[@id="command_scheduler_detail_save"]')->count());
 
         $buttonCrawlerNode = $crawler->selectButton('Save');
         $form = $buttonCrawlerNode->form();
         $fixtureSet = [
-            'command_scheduler_detail[id]' => '1',
-            'command_scheduler_detail[name]' => 'one',
+            'command_scheduler_detail[name]' => 'CommandTestOne',
             'command_scheduler_detail[command]' => 'debug:container',
             'command_scheduler_detail[arguments]' => '--help',
             'command_scheduler_detail[cronExpression]' => '@daily',
@@ -58,12 +69,9 @@ class DetailControllerTest extends WebTestCase
      */
     public function testNewSave()
     {
-        $client = parent::createClient();
+        $this->databaseTool->loadFixtures([]);
 
-        $this->loadFixtures([]);
-
-        $client->followRedirects(true);
-        $crawler = $client->request('GET', '/command-scheduler/detail/new');
+        $crawler = $this->client->request('GET', '/command-scheduler/detail/edit');
         $buttonCrawlerNode = $crawler->selectButton('Save');
         $form = $buttonCrawlerNode->form();
 
@@ -75,9 +83,9 @@ class DetailControllerTest extends WebTestCase
             'command_scheduler_detail[logFile]' => 'wtc.log',
             'command_scheduler_detail[priority]' => '5',
         ]);
-        $crawler = $client->submit($form);
+        $crawler = $this->client->submit($form);
 
-        $this->assertEquals(1, $crawler->filter('a[href^="/command-scheduler/action/toggle/"]')->count());
+        $this->assertEquals(1, $crawler->filterXPath('//a[contains(@href, "/command-scheduler/action/toggle/")]')->count());
         $this->assertEquals('wtc', trim($crawler->filter('td')->eq(1)->text()));
     }
 
@@ -86,20 +94,18 @@ class DetailControllerTest extends WebTestCase
      */
     public function testEditSave()
     {
-        $client = parent::createClient();
-
         // DataFixtures create 4 records
-        $this->loadFixtures([LoadScheduledCommandData::class]);
+        $this->databaseTool->loadFixtures([LoadScheduledCommandData::class]);
 
-        $client->followRedirects(true);
-        $crawler = $client->request('GET', '/command-scheduler/detail/edit/1');
+        $crawler = $this->client->request('GET', '/command-scheduler/detail/edit/1');
         $buttonCrawlerNode = $crawler->selectButton('Save');
         $form = $buttonCrawlerNode->form();
 
         $form->get('command_scheduler_detail[name]')->setValue('edited one');
-        $crawler = $client->submit($form);
+        $form->get('command_scheduler_detail[cronExpression]')->setValue('* * * * *');
+        $crawler = $this->client->submit($form);
 
-        $this->assertEquals(4, $crawler->filter('a[href^="/command-scheduler/action/toggle/"]')->count());
+        $this->assertEquals(5, $crawler->filterXPath('//a[contains(@href, "/command-scheduler/action/toggle/")]')->count());
         $this->assertEquals('edited one', trim($crawler->filter('td')->eq(1)->text()));
     }
 }

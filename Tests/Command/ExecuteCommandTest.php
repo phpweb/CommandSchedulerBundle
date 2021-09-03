@@ -1,36 +1,36 @@
-<?php
+<?php /** @noinspection ALL */
 
-namespace JMose\CommandSchedulerBundle\Tests\Command;
+namespace Dukecity\CommandSchedulerBundle\Tests\Command;
 
-use JMose\CommandSchedulerBundle\Fixtures\ORM\LoadScheduledCommandData;
-use Liip\FunctionalTestBundle\Test\WebTestCase;
+use Dukecity\CommandSchedulerBundle\Command\ExecuteCommand;
+use Dukecity\CommandSchedulerBundle\Fixtures\ORM\LoadScheduledCommandData;
 use Liip\TestFixturesBundle\Test\FixturesTrait;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Tester\CommandTester;
 
 /**
  * Class ExecuteCommandTest.
  */
-class ExecuteCommandTest extends WebTestCase
+class ExecuteCommandTest extends AbstractCommandTest
 {
-    use FixturesTrait;
-
     /**
      * Test scheduler:execute without option.
      */
     public function testExecute()
     {
         // DataFixtures create 4 records
-        $this->loadFixtures([LoadScheduledCommandData::class]);
+        $this->loadScheduledCommandFixtures();
 
-        $output = $this->runCommand('scheduler:execute', [], true)->getDisplay();
+        $output = $this->executeCommand(ExecuteCommand::class)->getDisplay();
 
-        $this->assertStringStartsWith('Start : Execute all scheduled command', $output);
-        $this->assertRegExp('/debug:container should be executed/', $output);
-        $this->assertRegExp('/Execute : debug:container --help/', $output);
-        $this->assertRegExp('/Immediately execution asked for : debug:router/', $output);
-        $this->assertRegExp('/Execute : debug:router/', $output);
+        $this->assertStringContainsString('Start : Execute', $output);
+        $this->assertStringContainsString('CommandTestOne: debug:container', $output);
+        $this->assertStringContainsString('CommandTestFour: debug:router', $output);
 
-        $output = $this->runCommand('scheduler:execute')->getDisplay();
-        $this->assertRegExp('/Nothing to do/', $output);
+        # the second call should show that no commands needs exceution
+        $output = $this->executeCommand(ExecuteCommand::class)->getDisplay();
+        $this->assertStringContainsString('Nothing to do', $output);
     }
 
     /**
@@ -39,20 +39,14 @@ class ExecuteCommandTest extends WebTestCase
     public function testExecuteWithNoOutput()
     {
         // DataFixtures create 4 records
-        $this->loadFixtures([LoadScheduledCommandData::class]);
+        $this->loadScheduledCommandFixtures();
 
-        $output = $this->runCommand(
-            'scheduler:execute',
-            [
-                '--no-output' => true,
-            ],
-            true
-        )->getDisplay();
+        $output = $this->executeCommand(ExecuteCommand::class, ['--no-output' => true])->getDisplay();
 
         $this->assertEquals('', $output);
 
-        $output = $this->runCommand('scheduler:execute')->getDisplay();
-        $this->assertRegExp('/Nothing to do/', $output);
+        $output = $this->executeCommand(ExecuteCommand::class)->getDisplay();
+        $this->assertStringContainsString('Nothing to do', $output);
     }
 
     /**
@@ -61,18 +55,12 @@ class ExecuteCommandTest extends WebTestCase
     public function testExecuteWithDump()
     {
         // DataFixtures create 4 records
-        $this->loadFixtures([LoadScheduledCommandData::class]);
+        $this->loadScheduledCommandFixtures();
 
-        $output = $this->runCommand(
-            'scheduler:execute',
-            [
-                '--dump' => true,
-            ],
-            true
-        )->getDisplay();
+        $output = $this->executeCommand(ExecuteCommand::class, ['--dump' => true])->getDisplay();
 
-        $this->assertStringStartsWith('Start : Dump all scheduled command', $output);
-        $this->assertRegExp('/Command debug:container should be executed/', $output);
-        $this->assertRegExp('/Immediately execution asked for : debug:router/', $output);
+        $this->assertStringContainsString('Start : Dump', $output);
+        $this->assertStringContainsString('CommandTestOne:', $output);
+        $this->assertStringContainsString('CommandTestFour:', $output);
     }
 }

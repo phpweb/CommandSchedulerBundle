@@ -1,7 +1,8 @@
-<?php
+<?php /** @noinspection ALL */
 
-namespace JMose\CommandSchedulerBundle\Command;
+namespace Dukecity\CommandSchedulerBundle\Command;
 
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputInterface;
@@ -16,30 +17,56 @@ use Symfony\Component\Console\Output\OutputInterface;
  *
  * Adaption to CommandSchedulerBundle by Christoph Singer <singer@webagentur72.de>
  */
+#[AsCommand(name: 'scheduler:start', description: 'Starts command scheduler')]
 class StartSchedulerCommand extends Command
 {
+    const SUCCESS = 0;
+    const FAILURE = 1;
+
+    /**
+     * @var string
+     */
+    protected static $defaultName = 'scheduler:start';
     const PID_FILE = '.cron-pid';
 
     /**
      * {@inheritdoc}
      */
-    protected function configure()
+    protected function configure(): void
     {
-        $this->setName('scheduler:start')
-            ->setDescription('Starts command scheduler')
-            ->addOption('blocking', 'b', InputOption::VALUE_NONE, 'Run in blocking mode.');
+        $this->setDescription('Starts command scheduler')
+            ->addOption('blocking', 'b', InputOption::VALUE_NONE, 'Run in blocking mode.')
+        ->setHelp(<<<'HELP'
+The <info>%command.name%</info> is for running the manual command scheduler:
+
+You can enable the blocking mode with
+<info>php %command.full_name%</info> <comment>-b, --blocking</comment>
+
+Deamon (Beta) : If you don't want to set up a cron job, you can use 
+<comment>scheduler:start</comment> and <comment>scheduler:stop</comment> commands.
+This commands manage a deamon process that will call scheduler:execute every minute. 
+It require the pcntlphp extension.
+Note that with this mode, if a command with an error, it will stop all the scheduler.
+
+Note : Each command is locked just before his execution (and unlocked after). 
+This system avoid to have simultaneous process for the same command. Thus, 
+if an non-catchable error occurs, the command won't be executed again unless the problem 
+is solved and the task is unlocked manually
+
+HELP
+    );
     }
 
     /**
      * {@inheritdoc}
      */
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         if ($input->getOption('blocking')) {
-            $output->writeln(sprintf('<info>%s</info>', 'Starting command scheduler in blocking mode.'));
+            $output->writeln(sprintf('<info>%s</info>', 'Starting command scheduler in blocking mode. Press CTRL+C to cancel'));
             $this->scheduler($output->isVerbose() ? $output : new NullOutput(), null);
 
-            return 0;
+            return self::SUCCESS;
         }
 
         if (!extension_loaded('pcntl')) {
@@ -57,7 +84,7 @@ class StartSchedulerCommand extends Command
 
             $output->writeln(sprintf('<info>%s</info>', 'Command scheduler started in non-blocking mode...'));
 
-            return 0;
+            return self::SUCCESS;
         }
 
         if (-1 === posix_setsid()) {
@@ -66,10 +93,15 @@ class StartSchedulerCommand extends Command
 
         $this->scheduler(new NullOutput(), $pidFile);
 
-        return 0;
+        return self::SUCCESS;
     }
 
-    private function scheduler(OutputInterface $output, $pidFile)
+    /**
+     * @param OutputInterface $output
+     * @param ?string $pidFile
+     * @throws \Symfony\Component\Console\Exception\ExceptionInterface
+     */
+    private function scheduler(OutputInterface $output, ?string $pidFile): void
     {
         $input = new ArrayInput([]);
 
@@ -78,7 +110,7 @@ class StartSchedulerCommand extends Command
 
         while (true) {
             $now = microtime(true);
-            usleep((60 - ($now % 60) + (int) $now - $now) * 1e6);
+            usleep((60 - ($now % 60) + (int) $now - $now) * 1_000_000.0);
 
             if (null !== $pidFile && !file_exists($pidFile)) {
                 break;

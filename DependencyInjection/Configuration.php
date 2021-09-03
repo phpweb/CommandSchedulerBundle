@@ -1,6 +1,6 @@
 <?php
 
-namespace JMose\CommandSchedulerBundle\DependencyInjection;
+namespace Dukecity\CommandSchedulerBundle\DependencyInjection;
 
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
@@ -8,21 +8,23 @@ use Symfony\Component\Config\Definition\ConfigurationInterface;
 /**
  * This is the class that validates and merges configuration from your app/config files.
  *
- * To learn more see {@link http://symfony.com/doc/current/cookbook/bundles/extension.html#cookbook-bundles-extension-config-class}
+ * To learn more see {@link http://symfony.com/doc/current/cookbook/bundles/extension.html}
  */
 class Configuration implements ConfigurationInterface
 {
     /**
      * {@inheritdoc}
      */
-    public function getConfigTreeBuilder()
+    public function getConfigTreeBuilder(): TreeBuilder
     {
-        $treeBuilder = new TreeBuilder('jmose_command_scheduler');
+        $treeBuilder = new TreeBuilder('dukecity_command_scheduler');
+
+        # TODO remove in version 4 ?
         if (method_exists($treeBuilder, 'getRootNode')) {
             $rootNode = $treeBuilder->getRootNode();
         } else {
             // BC layer for symfony/config 4.1 and older
-            $rootNode = $treeBuilder->root('jmose_command_scheduler');
+            $rootNode = $treeBuilder->root('dukecity_command_scheduler');
         }
 
         $rootNode
@@ -40,6 +42,10 @@ class Configuration implements ConfigurationInterface
                     ->defaultValue([])
                     ->validate()
                         ->always(function ($value) {
+                            if (null === $value) {
+                                return [];
+                            }
+
                             if (is_string($value)) {
                                 return explode(',', $value);
                             }
@@ -52,6 +58,10 @@ class Configuration implements ConfigurationInterface
                     ->defaultValue([])
                     ->validate()
                         ->always(function ($value) {
+                            if (null === $value) {
+                                return [];
+                            }
+
                             if (is_string($value)) {
                                 return explode(',', $value);
                             }

@@ -1,9 +1,10 @@
 <?php
 
-namespace JMose\CommandSchedulerBundle\Tests\Constraints;
+namespace Dukecity\CommandSchedulerBundle\Tests\Constraints;
 
-use JMose\CommandSchedulerBundle\Validator\Constraints\CronExpression;
-use JMose\CommandSchedulerBundle\Validator\Constraints\CronExpressionValidator;
+use JetBrains\PhpStorm\Pure;
+use Dukecity\CommandSchedulerBundle\Validator\Constraints\CronExpression;
+use Dukecity\CommandSchedulerBundle\Validator\Constraints\CronExpressionValidator;
 use Symfony\Component\Validator\Test\ConstraintValidatorTestCase;
 
 /**
@@ -11,22 +12,24 @@ use Symfony\Component\Validator\Test\ConstraintValidatorTestCase;
  */
 class CronExpressionValidatorTest extends ConstraintValidatorTestCase
 {
-    protected function createValidator()
+    #[Pure]
+    protected function createValidator(): CronExpressionValidator
     {
         return new CronExpressionValidator();
     }
 
     /**
      * @dataProvider getValidValues
+     * @param string $value
      */
-    public function testValidValues($value)
+    public function testValidValues(string $value)
     {
         $this->validator->validate($value, new CronExpression(['message' => '']));
 
         $this->assertNoViolation();
     }
 
-    public function getValidValues()
+    public function getValidValues(): array
     {
         return [
             ['* * * * *'],
@@ -38,26 +41,24 @@ class CronExpressionValidatorTest extends ConstraintValidatorTestCase
 
     /**
      * @dataProvider getInvalidValues
+     * @param string $value
      */
-    public function testInvalidValues($value)
+    public function testInvalidValues(string $value)
     {
-        $constraint = new CronExpression(
-            [
-                'message' => 'myMessage',
-            ]
-        );
+        $constraint = new CronExpression(['message' => 'myMessage']);
 
         $this->validator->validate($value, $constraint);
 
         $this->buildViolation('myMessage')
+            ->setParameter('{{ string }}', $value)
             ->assertRaised();
     }
 
-    public function getInvalidValues()
+    public function getInvalidValues(): array
     {
         return [
             ['*/10 * * *'],
-            ['*/5 * * * ?'],
+            //['*/5 * * * ?'],
             ['sometimes'],
             ['never'],
             ['*****'],

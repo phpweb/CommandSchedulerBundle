@@ -1,167 +1,185 @@
 <?php
 
-namespace JMose\CommandSchedulerBundle\Command;
+/** @noinspection PhpMissingFieldTypeInspection */
 
+namespace Dukecity\CommandSchedulerBundle\Command;
+
+use Carbon\Carbon;
+use Doctrine\Persistence\ObjectManager;
+use Dukecity\CommandSchedulerBundle\Event\SchedulerCommandFailedEvent;
 use Symfony\Bridge\Doctrine\ManagerRegistry;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+//use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Dukecity\CommandSchedulerBundle\Entity\ScheduledCommand;
 
 /**
- * Class MonitorCommand : This class is used for monitoring scheduled commands if they run for too long or failed to execute.
+ * Class MonitorCommand
+ * This class is used for monitoring scheduled commands if they run for too long or failed to execute.
  *
  * @author  Daniel Fischer <dfischer000@gmail.com>
  */
+#[AsCommand(name: 'scheduler:monitor', description: 'Monitor scheduled commands')]
 class MonitorCommand extends Command
 {
-    /**
-     * @var \Doctrine\ORM\EntityManager
-     */
-    private $em;
+    const SUCCESS = 0;
+    const FAILURE = 1;
 
     /**
-     * @var bool
+     * @var string
      */
-    private $dumpMode;
-
-    /**
-     * @var int|bool Number of seconds after a command is considered as timeout
-     */
-    private $lockTimeout;
-
-    /**
-     * @var string|array receiver for statusmail if an error occured
-     */
-    private $receiver;
-
-    /**
-     * @var string mailSubject subject to be used when sending a mail
-     */
-    private $mailSubject;
-
-    /**
-     * @var bool if true, current command will send mail even if all is ok.
-     */
-    private $sendMailIfNoError;
+    protected static $defaultName = 'scheduler:monitor';
+    private ObjectManager $em;
+    private EventDispatcherInterface $eventDispatcher;
+    //private ParameterBagInterface $params;
 
     /**
      * MonitorCommand constructor.
      *
-     * @param ManagerRegistry $managerRegistry
-     * @param $managerName
-     * @param $lockTimeout
-     * @param $receiver
-     * @param $mailSubject
-     * @param $sendMailIfNoError
+     * @param EventDispatcherInterface $eventDispatcher
+     * @param ManagerRegistry          $managerRegistry
+     * @param string                   $managerName
+     * @param int | bool               $lockTimeout
+     * @param array                    $receiver
+     * @param string                   $mailSubject
+     * @param bool                     $sendMailIfNoError
      */
     public function __construct(
+        EventDispatcherInterface $eventDispatcher,
         ManagerRegistry $managerRegistry,
-        $managerName,
-        $lockTimeout,
-        $receiver,
-        $mailSubject,
-        $sendMailIfNoError
+        string $managerName,
+        private int | bool $lockTimeout,
+        private array $receiver,
+        private string $mailSubject,
+        private bool $sendMailIfNoError = false
     ) {
         $this->em = $managerRegistry->getManager($managerName);
-        $this->lockTimeout = $lockTimeout;
-        $this->receiver = $receiver;
-        $this->mailSubject = $mailSubject;
-        $this->sendMailIfNoError = $sendMailIfNoError;
-
+        $this->eventDispatcher = $eventDispatcher;
         parent::__construct();
     }
 
     /**
      * {@inheritdoc}
      */
-    protected function configure()
+    protected function configure(): void
     {
-        $this
-            ->setName('scheduler:monitor')
-            ->setDescription('Monitor scheduled commands')
+        $this->setDescription('Monitor scheduled commands')
             ->addOption('dump', null, InputOption::VALUE_NONE, 'Display result instead of send mail')
-            ->setHelp('This class is for monitoring all active commands.');
+            ->setHelp(<<<'HELP'
+The <info>%command.name%</info> is reporting failed and timedout scheduled commands:
+
+  <info>php %command.full_name%</info>
+
+By default the command sends the info via symfony messanger to the configured recipients.
+You can just print the infos on the console via the <comment>--dump</comment> option:
+
+  <info>php %command.full_name%</info> <comment>--dump</comment>
+
+HELP);
     }
 
     /**
      * @param InputInterface  $input
      * @param OutputInterface $output
      *
-     * @return int|void|null
+     * @return int
+     *
+     * @throws \Exception
      */
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         // If not in dump mode and none receiver is set, exit.
-        $this->dumpMode = $input->getOption('dump');
-        if (!$this->dumpMode && 0 === count($this->receiver)) {
-            $output->writeln('Please add receiver in configuration');
+        $dumpMode = (bool) $input->getOption('dump');
+        if (!$dumpMode && 0 === count($this->receiver)) {
+            $output->writeln('<error>Please add receiver in configuration. Or use --dump option</error>');
 
-            return 1;
+            return self::FAILURE;
         }
 
         // Fist, get all failed or potential timeout
-        $failedCommands = $this->em->getRepository('JMoseCommandSchedulerBundle:ScheduledCommand')
+        $failedCommands = $this->em->getRepository(ScheduledCommand::class)
             ->findFailedAndTimeoutCommands($this->lockTimeout);
+        //->findAll(); // for notification testing
 
         // Commands in error
         if (count($failedCommands) > 0) {
-            $message = '';
-
-            foreach ($failedCommands as $command) {
-                $message .= sprintf(
-                    "%s: returncode %s, locked: %s, last execution: %s\n",
-                    $command->getName(),
-                    $command->getLastReturnCode(),
-                    $command->getLocked(),
-                    $command->getLastExecution()->format(\DateTimeInterface::ATOM)
-                );
-            }
-
             // if --dump option, don't send mail
-            if ($this->dumpMode) {
-                $output->writeln($message);
+            if ($dumpMode) {
+                $this->dump($output, $failedCommands);
             } else {
-                $this->sendMails($message);
+                $this->eventDispatcher->dispatch(new SchedulerCommandFailedEvent($failedCommands));
             }
-        } else {
-            if ($this->dumpMode) {
-                $output->writeln('No errors found.');
-            } elseif ($this->sendMailIfNoError) {
-                $this->sendMails('No errors found.');
-            }
-        }
+        } elseif ($dumpMode) {
+            $output->writeln('<info>No errors found.</info>');
+        } /*elseif ($this->params->get('sendMailIfNoError')) {
+            $this->sendMails('No errors found.');
+        }*/
 
-        return 0;
+        return self::SUCCESS;
     }
 
     /**
-     * Send message to email receivers.
+     * Print a table of locked Commands to console.
      *
-     * @param string $message message to be sent
+     * @param OutputInterface $output
+     * @param array           $failedCommands
+     *
+     * @throws \Exception
      */
-    private function sendMails($message)
+    private function dump(OutputInterface $output, array $failedCommands): void
     {
-        // prepare email constants
-        $hostname = gethostname();
-        $subject = $this->getMailSubject();
-        $headers = 'From: cron-monitor@'.$hostname."\r\n".
-            'X-Mailer: PHP/'.phpversion();
+        $table = new Table($output);
+        $table->setStyle('box');
+        $table->setHeaders(['Name', 'LastReturnCode', 'Locked', 'LastExecution', 'NextExecution']);
 
-        foreach ($this->receiver as $rcv) {
-            mail(trim($rcv), $subject, $message, $headers);
+        foreach ($failedCommands as $command) {
+            $lockedInfo = match ($command->getLocked()) {
+                true => '<error>LOCKED</error>',
+            default => ''
+            };
+
+            $lastReturnInfo = match ($command->getLastReturnCode()) {
+                '', false, null => '',
+                0 => '<info>0 (success)</info>',
+                // no break
+            default => '<error>'.$command->getLastReturnCode().' (error)</error>'
+            };
+
+
+            $lastRunDate = $command->getLastExecution();
+            if($lastRunDate)
+            {
+                $lastRunDateText = $lastRunDate->format('Y-m-d H:i').' ('
+                    .Carbon::instance($command->getLastExecution())->diffForHumans().')';
+            }
+            else {
+                $lastRunDateText = '';
+            }
+
+            $nextRunDate = $command->getNextRunDate();
+            if($nextRunDate)
+            {
+                $nextRunDateText = $nextRunDate->format('Y-m-d H:i').' ('
+                .Carbon::instance($nextRunDate)->diffForHumans().')';
+            }
+            else {
+                $nextRunDateText = '';
+            }
+
+            $table->addRow([
+                $command->getName(),
+                $lastReturnInfo,
+                $lockedInfo,
+                $lastRunDateText,
+                $nextRunDateText
+            ]);
         }
-    }
 
-    /**
-     * get the subject for monitor mails.
-     *
-     * @return string subject
-     */
-    private function getMailSubject()
-    {
-        $hostname = gethostname();
-
-        return sprintf($this->mailSubject, $hostname, date('Y-m-d H:i:s'));
+        $table->render();
     }
 }

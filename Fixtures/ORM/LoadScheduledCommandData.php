@@ -1,10 +1,10 @@
 <?php
 
-namespace JMose\CommandSchedulerBundle\Fixtures\ORM;
+namespace Dukecity\CommandSchedulerBundle\Fixtures\ORM;
 
 use Doctrine\Common\DataFixtures\FixtureInterface;
 use Doctrine\Persistence\ObjectManager;
-use JMose\CommandSchedulerBundle\Entity\ScheduledCommand;
+use Dukecity\CommandSchedulerBundle\Entity\ScheduledCommand;
 
 /**
  * Class LoadScheduledCommandData.
@@ -13,15 +13,12 @@ use JMose\CommandSchedulerBundle\Entity\ScheduledCommand;
  */
 class LoadScheduledCommandData implements FixtureInterface
 {
-    /**
-     * @var ObjectManager
-     */
-    protected $manager;
+    protected ?ObjectManager $manager = null;
 
     /**
      * {@inheritdoc}
      */
-    public function load(ObjectManager $manager)
+    public function load(ObjectManager $manager): void
     {
         $this->manager = $manager;
 
@@ -29,33 +26,47 @@ class LoadScheduledCommandData implements FixtureInterface
         $today = clone $now;
         $beforeYesterday = $now->modify('-2 days');
 
-        $this->createScheduledCommand('one', 'debug:container', '--help', '@daily', 'one.log', 100, $beforeYesterday);
-        $this->createScheduledCommand('two', 'debug:container', '', '@daily', 'two.log', 80, $beforeYesterday, true);
-        $this->createScheduledCommand('three', 'debug:container', '', '@daily', 'three.log', 60, $today, false, true);
-        $this->createScheduledCommand('four', 'debug:router', '', '@daily', 'four.log', 40, $today, false, false, true, -1);
+        $this->createScheduledCommand('CommandTestOne',   'debug:container', '--help', '@daily', 'one.log', 100, $beforeYesterday);
+        $this->createScheduledCommand('CommandTestTwo',   'debug:container', '', '@daily', 'two.log', 80, $beforeYesterday, true);
+        $this->createScheduledCommand('CommandTestThree', 'debug:container', '', '@daily', 'three.log', 60, $today, false, true);
+        $this->createScheduledCommand('CommandTestFour',   'debug:router', '', '@daily', 'four.log', 40, $today, false, false, true, -1);
+        $this->createScheduledCommand('CommandTestFive',   'scheduler:test', '0 true', '@daily', 'five.log', 39, $today, false, false, true);
     }
 
     /**
      * Create a new ScheduledCommand in database.
      *
-     * @param $name
-     * @param $command
-     * @param $arguments
-     * @param $cronExpression
-     * @param $logFile
-     * @param $priority
-     * @param $lastExecution
-     * @param bool $locked
-     * @param bool $disabled
-     * @param bool $executeNow
-     * @param int  $lastReturnCode
+     * @param string         $name
+     * @param string         $command
+     * @param string         $arguments
+     * @param string         $cronExpression
+     * @param string         $logFile
+     * @param int            $priority
+     * @param \DateTime|null $lastExecution
+     * @param bool           $locked
+     * @param bool           $disabled
+     * @param bool           $executeNow
+     * @param int|null       $lastReturnCode
+     *
+     * @return bool
      */
     protected function createScheduledCommand(
-        $name, $command, $arguments, $cronExpression, $logFile, $priority, $lastExecution,
-        $locked = false, $disabled = false, $executeNow = false, $lastReturnCode = null)
-    {
-        $scheduledCommand = new ScheduledCommand();
-        $scheduledCommand
+        string $name,
+        string $command,
+        string $arguments,
+        string $cronExpression,
+        string $logFile,
+        int $priority = 0,
+        ?\DateTime $lastExecution = null,
+        bool $locked = false,
+        bool $disabled = false,
+        bool $executeNow = false,
+        ?int $lastReturnCode = null
+    ): bool {
+        $this->manager->getConnection()->beginTransaction();
+        try {
+            $scheduledCommand = new ScheduledCommand();
+            $scheduledCommand
             ->setName($name)
             ->setCommand($command)
             ->setArguments($arguments)
@@ -68,7 +79,16 @@ class LoadScheduledCommandData implements FixtureInterface
             ->setLastReturnCode($lastReturnCode)
             ->setExecuteImmediately($executeNow);
 
-        $this->manager->persist($scheduledCommand);
-        $this->manager->flush();
+            $this->manager->persist($scheduledCommand);
+            $this->manager->flush();
+            $this->manager->getConnection()->commit();
+        } catch (\Exception $e) {
+            #var_dump($e->getMessage());
+            $this->manager->getConnection()->rollBack();
+
+            return false;
+        }
+
+        return true;
     }
 }

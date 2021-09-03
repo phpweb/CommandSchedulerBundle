@@ -1,8 +1,8 @@
 <?php
 
-namespace JMose\CommandSchedulerBundle\Form\Type;
+namespace Dukecity\CommandSchedulerBundle\Form\Type;
 
-use JMose\CommandSchedulerBundle\Service\CommandParser;
+use Dukecity\CommandSchedulerBundle\Service\CommandParser;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
 use Symfony\Component\OptionsResolver\OptionsResolver;
@@ -15,22 +15,18 @@ use Symfony\Component\OptionsResolver\OptionsResolver;
 class CommandChoiceType extends AbstractType
 {
     /**
-     * @var CommandParser
-     */
-    private $commandParser;
-
-    /**
+     * CommandChoiceType constructor.
      * @param CommandParser $commandParser
      */
-    public function __construct(CommandParser $commandParser)
+    public function __construct(private CommandParser $commandParser)
     {
-        $this->commandParser = $commandParser;
     }
 
     /**
      * @param OptionsResolver $resolver
+     * @throws \Exception
      */
-    public function configureOptions(OptionsResolver $resolver)
+    public function configureOptions(OptionsResolver $resolver): void
     {
         $resolver->setDefaults(
             [
@@ -42,7 +38,7 @@ class CommandChoiceType extends AbstractType
     /**
      * {@inheritdoc}
      */
-    public function getParent()
+    public function getParent(): string
     {
         return ChoiceType::class;
     }

@@ -1,16 +1,26 @@
 <?php
 
-namespace JMose\CommandSchedulerBundle\Command;
+/** @noinspection PhpUnused */
+/** @noinspection PhpMissingFieldTypeInspection */
 
-use Cron\CronExpression;
-use JMose\CommandSchedulerBundle\Entity\ScheduledCommand;
+namespace Dukecity\CommandSchedulerBundle\Command;
+
+use Doctrine\Persistence\ObjectManager;
+use Dukecity\CommandSchedulerBundle\Entity\ScheduledCommand;
+use Dukecity\CommandSchedulerBundle\Service\CommandSchedulerExecution;
 use Symfony\Bridge\Doctrine\ManagerRegistry;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Command\LockableTrait;
+use Symfony\Component\Console\Exception\ExceptionInterface;
+use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Input\StringInput;
-use Symfony\Component\Console\Output\NullOutput;
 use Symfony\Component\Console\Output\OutputInterface;
+use Dukecity\CommandSchedulerBundle\Service\SymfonyStyleWrapper as SymfonyStyle;
+#use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\Console\Output\ConsoleOutput;
 use Symfony\Component\Console\Output\StreamOutput;
 
 /**
@@ -18,39 +28,51 @@ use Symfony\Component\Console\Output\StreamOutput;
  *
  * @author  Julien Guyon <julienguyon@hotmail.com>
  */
+#[AsCommand(name: 'scheduler:execute', description: 'Execute scheduled commands')]
 class ExecuteCommand extends Command
 {
-    /**
-     * @var \Doctrine\ORM\EntityManager
-     */
-    private $em;
+    use LockableTrait;
+
+    const SUCCESS = 0;
+    const FAILURE = 1;
 
     /**
      * @var string
      */
-    private $logPath;
-
+    protected static $defaultName = 'scheduler:execute';
+    //private ObjectManager | EntityManager $em;
+    private ObjectManager $em;
+    private EventDispatcherInterface $eventDispatcher;
+    private string $dumpMode;
+    private ?int $commandsVerbosity = null;
+    private $output;
+    private InputInterface $input;
+    private CommandSchedulerExecution $commandSchedulerExecution;
     /**
-     * @var bool
+     * @var bool|string|string[]|null
      */
-    private $dumpMode;
-
-    /**
-     * @var int
-     */
-    private $commandsVerbosity;
+    private null|bool|array|string $env;
 
     /**
      * ExecuteCommand constructor.
      *
+     * @param CommandSchedulerExecution $commandSchedulerExecution
+     * @param EventDispatcherInterface $eventDispatcher
      * @param ManagerRegistry $managerRegistry
-     * @param $managerName
-     * @param $logPath
+     * @param string $managerName
+     * @param string | bool $logPath
      */
-    public function __construct(ManagerRegistry $managerRegistry, $managerName, $logPath)
-    {
+    public function __construct(
+        CommandSchedulerExecution $commandSchedulerExecution,
+        EventDispatcherInterface $eventDispatcher,
+        ManagerRegistry $managerRegistry,
+        string $managerName,
+    private string | bool $logPath
+    ) {
+        $this->eventDispatcher = $eventDispatcher;
         $this->em = $managerRegistry->getManager($managerName);
-        $this->logPath = $logPath;
+
+        $this->commandSchedulerExecution = $commandSchedulerExecution;
 
         // If logpath is not set to false, append the directory separator to it
         if (false !== $this->logPath) {
@@ -63,14 +85,19 @@ class ExecuteCommand extends Command
     /**
      * {@inheritdoc}
      */
-    protected function configure()
+    protected function configure(): void
     {
-        $this
-            ->setName('scheduler:execute')
-            ->setDescription('Execute scheduled commands')
+        $this->setDescription('Execute scheduled commands')
             ->addOption('dump', null, InputOption::VALUE_NONE, 'Display next execution')
             ->addOption('no-output', null, InputOption::VALUE_NONE, 'Disable output message from scheduler')
-            ->setHelp('This class is the entry point to execute all scheduled command');
+            ->setHelp(<<<'HELP'
+The <info>%command.name%</info> is the entry point to execute all scheduled command:
+
+You can list the commands with last and next exceution time with
+<info>php bin/console scheduler:list</info>
+
+HELP
+            );
     }
 
     /**
@@ -79,189 +106,135 @@ class ExecuteCommand extends Command
      * @param InputInterface  $input
      * @param OutputInterface $output
      */
-    protected function initialize(InputInterface $input, OutputInterface $output)
+    protected function initialize(InputInterface $input, OutputInterface $output): void
     {
-        $this->dumpMode = $input->getOption('dump');
+        $this->output = $output;
+        $this->input = $input;
+
+        $this->dumpMode = (string) $this->input->getOption('dump');
+
+        try{
+            $this->env = $this->input->getOption('env');
+        }
+        catch (\Exception)
+        {
+            $this->env = "test";
+        }
+
 
         // Store the original verbosity before apply the quiet parameter
-        $this->commandsVerbosity = $output->getVerbosity();
+        $this->commandsVerbosity = $this->output->getVerbosity();
 
-        if (true === $input->getOption('no-output')) {
-            $output->setVerbosity(OutputInterface::VERBOSITY_QUIET);
+        if (true === $this->input->getOption('no-output')) {
+            $this->output->setVerbosity(OutputInterface::VERBOSITY_QUIET);
         }
     }
 
     /**
-     * @param InputInterface  $input
-     * @param OutputInterface $output
+     * {@inheritdoc}
      *
-     * @return int
+     * @throws \Exception
+     * @throws ExceptionInterface
      */
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $output->writeln('<info>Start : '.($this->dumpMode ? 'Dump' : 'Execute').' all scheduled command</info>');
-
-        // Before continue, we check that the output file is valid and writable (except for gaufrette)
-        if (false !== $this->logPath && 0 !== strpos($this->logPath, 'gaufrette:') && false === is_writable(
-                $this->logPath
-            )
-        ) {
-            $output->writeln(
-                '<error>'.$this->logPath.
-                ' not found or not writable. You should override `log_path` in your config.yml'.'</error>'
-            );
-
-            return 1;
-        }
-
-        $commands = $this->em->getRepository(ScheduledCommand::class)->findEnabledCommand();
-
-        $noneExecution = true;
-        foreach ($commands as $command) {
-            $this->em->refresh($this->em->find(ScheduledCommand::class, $command));
-            if ($command->isDisabled() || $command->isLocked()) {
-                continue;
-            }
-
-            /** @var ScheduledCommand $command */
-            $cron = CronExpression::factory($command->getCronExpression());
-            $nextRunDate = $cron->getNextRunDate($command->getLastExecution());
-            $now = new \DateTime();
-
-            if ($command->isExecuteImmediately()) {
-                $noneExecution = false;
-                $output->writeln(
-                    'Immediately execution asked for : <comment>'.$command->getCommand().'</comment>'
-                );
-
-                if (!$input->getOption('dump')) {
-                    $this->executeCommand($command, $output, $input);
-                }
-            } elseif ($nextRunDate < $now) {
-                $noneExecution = false;
-                $output->writeln(
-                    'Command <comment>'.$command->getCommand().
-                    '</comment> should be executed - last execution : <comment>'.
-                    $command->getLastExecution()->format(\DateTimeInterface::ATOM).'.</comment>'
-                );
-
-                if (!$input->getOption('dump')) {
-                    $this->executeCommand($command, $output, $input);
-                }
-            }
-        }
-
-        if (true === $noneExecution) {
-            $output->writeln('Nothing to do.');
-        }
-
-        return 0;
-    }
-
-    /**
-     * @param ScheduledCommand $scheduledCommand
-     * @param OutputInterface  $output
-     * @param InputInterface   $input
-     */
-    private function executeCommand(ScheduledCommand $scheduledCommand, OutputInterface $output, InputInterface $input)
-    {
-        //reload command from database before every execution to avoid parallel execution
-        $this->em->getConnection()->beginTransaction();
-        try {
-            $notLockedCommand = $this
-                ->em
-                ->getRepository(ScheduledCommand::class)
-                ->getNotLockedCommand($scheduledCommand);
-            //$notLockedCommand will be locked for avoiding parallel calls: http://dev.mysql.com/doc/refman/5.7/en/innodb-locking-reads.html
-            if (null === $notLockedCommand) {
-                throw new \Exception();
-            }
-
-            $scheduledCommand = $notLockedCommand;
-            $scheduledCommand->setLastExecution(new \DateTime());
-            $scheduledCommand->setLocked(true);
-            $this->em->persist($scheduledCommand);
-            $this->em->flush();
-            $this->em->getConnection()->commit();
-        } catch (\Exception $e) {
-            $this->em->getConnection()->rollBack();
-            $output->writeln(
-                sprintf(
-                    '<error>Command %s is locked %s</error>',
-                    $scheduledCommand->getCommand(),
-                    (!empty($e->getMessage()) ? sprintf('(%s)', $e->getMessage()) : '')
-                )
-            );
-
-            return;
-        }
-
-        $scheduledCommand = $this->em->find(ScheduledCommand::class, $scheduledCommand);
-
-        try {
-            $command = $this->getApplication()->find($scheduledCommand->getCommand());
-        } catch (\InvalidArgumentException $e) {
-            $scheduledCommand->setLastReturnCode(-1);
-            $output->writeln('<error>Cannot find '.$scheduledCommand->getCommand().'</error>');
-
-            return;
-        }
-
-        $input = new StringInput(
-            $scheduledCommand->getCommand().' '.$scheduledCommand->getArguments().' --env='.$input->getOption('env')
-        );
-        $command->mergeApplicationDefinition();
-        $input->bind($command->getDefinition());
-
-        // Disable interactive mode if the current command has no-interaction flag
-        if (true === $input->hasParameterOption(['--no-interaction', '-n'])) {
-            $input->setInteractive(false);
-        }
-
-        // Use a StreamOutput or NullOutput to redirect write() and writeln() in a log file
-        if (false === $this->logPath || empty($scheduledCommand->getLogFile())) {
-            $logOutput = new NullOutput();
-        } else {
-            $logOutput = new StreamOutput(
-                fopen(
-                    $this->logPath.$scheduledCommand->getLogFile(),
-                    'a',
-                    false
-                ), $this->commandsVerbosity
-            );
-        }
-
-        // Execute command and get return code
-        try {
-            $output->writeln(
-                '<info>Execute</info> : <comment>'.$scheduledCommand->getCommand()
-                .' '.$scheduledCommand->getArguments().'</comment>'
-            );
-            $result = $command->run($input, $logOutput);
-        } catch (\Exception $e) {
-            $logOutput->writeln($e->getMessage());
-            $logOutput->writeln($e->getTraceAsString());
-            $result = -1;
-        }
-
-        if (false === $this->em->isOpen()) {
-            $output->writeln('<comment>Entity manager closed by the last command.</comment>');
-            $this->em = $this->em->create($this->em->getConnection(), $this->em->getConfiguration());
-        }
-
-        $scheduledCommand->setLastReturnCode($result);
-        $scheduledCommand->setLocked(false);
-        $scheduledCommand->setExecuteImmediately(false);
-        $this->em->persist($scheduledCommand);
-        $this->em->flush();
-
         /*
-         * This clear() is necessary to avoid conflict between commands and to be sure that none entity are managed
-         * before entering in a new command
+         * Be sure that there are no overlapping Execution of commands.
+         * The command is released at the end of this function
+         * @see https://symfony.com/doc/current/console/lockable_trait.html
          */
-        $this->em->clear();
+        if (!$this->lock()) {
+            $this->output->writeln('The command is already running in another process.');
 
-        unset($command);
-        gc_collect_cycles();
+            return self::SUCCESS;
+        }
+
+       # For Unittests ;(
+       if(is_a($this->output, ConsoleOutput::class))
+        {
+            $sectionListing = $this->output->section();
+            $sectionProgressbar = $this->output->section();
+            $io = new SymfonyStyle($this->input, $sectionListing);
+        }
+       else
+        {
+            $sectionProgressbar = $this->output;
+            $io = new SymfonyStyle($this->input, $this->output);
+            #$this->env="test";
+        }
+
+
+        // Before continue, we check that the "log_path" is valid and writable (except for gaufrette)
+        if (false !== $this->logPath &&
+            !str_starts_with($this->logPath, 'gaufrette:') &&
+            !is_writable($this->logPath)
+        ) {
+            $io->error(
+                $this->logPath.' not found or not writable. Check `log_path` in your config.yml'
+            );
+
+            return self::FAILURE;
+        }
+
+        $commandsToExceute = $this->em->getRepository(ScheduledCommand::class)
+            ->findCommandsToExecute();
+        $amountCommands = count($commandsToExceute);
+
+
+
+
+        $io->title('Start : '.($this->dumpMode ? 'Dump' : 'Execute').' of '.$amountCommands.' scheduled command(s)');
+
+
+        if (is_iterable($commandsToExceute) && $amountCommands >= 1)
+        {
+        # dry-run ?
+        if ($this->input->getOption('dump'))
+        {
+            foreach ($commandsToExceute as $command)
+            {
+                $io->info($command->getName().': '.$command->getCommand().' '.$command->getArguments());
+            }
+        }
+        else
+        {
+            # Execute
+            #$sectionProgressbar = $this->output->section();
+            $progress = new ProgressBar($sectionProgressbar);
+            $progress->setMessage('Start');
+            $progress->start($amountCommands);
+
+                foreach ($commandsToExceute as $command) {
+
+                    $progress->setMessage('Start Execution of '.$command->getCommand().' '.$command->getArguments());
+                    $io->comment('Start Execution of '.$command->getCommand().' '.$command->getArguments());
+
+                    $result = $this->commandSchedulerExecution->executeCommand($command, $this->env, $this->commandsVerbosity);
+
+                if($result==0)
+                {$io->success($command->getName().': '.$command->getCommand().' '.$command->getArguments());}
+                else
+                {$io->error($command->getName().': ERROR '.$result.': '.$command->getCommand().' '.$command->getArguments());}
+
+                    $progress->advance();
+                }
+
+            $progress->finish();
+
+
+            if(!is_a($this->output, StreamOutput::class))
+            {$sectionProgressbar->clear();}
+
+            $io->section('Finished Executions');
+
+        }}
+        else {
+            $io->success('Nothing to do.');
+        }
+
+
+        $this->release();
+
+        return self::SUCCESS;
     }
 }

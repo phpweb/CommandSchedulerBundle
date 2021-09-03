@@ -1,10 +1,17 @@
 <?php
 
-namespace JMose\CommandSchedulerBundle\Tests\Controller;
+namespace Dukecity\CommandSchedulerBundle\Tests\Controller;
 
-use JMose\CommandSchedulerBundle\Fixtures\ORM\LoadScheduledCommandData;
-use Liip\FunctionalTestBundle\Test\WebTestCase;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\OptimisticLockException;
+use Doctrine\ORM\ORMException;
+use Dukecity\CommandSchedulerBundle\Entity\ScheduledCommand;
+use Dukecity\CommandSchedulerBundle\Fixtures\ORM\LoadScheduledCommandData;
+use Liip\TestFixturesBundle\Services\DatabaseToolCollection;
+use Liip\TestFixturesBundle\Services\DatabaseTools\AbstractDatabaseTool;
 use Liip\TestFixturesBundle\Test\FixturesTrait;
+use Symfony\Bundle\FrameworkBundle\KernelBrowser;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -12,17 +19,9 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class ListControllerTest extends WebTestCase
 {
-    use FixturesTrait;
-
-    /**
-     * @var \Symfony\Bundle\FrameworkBundle\KernelBrowser
-     */
-    private $client;
-
-    /**
-     * @var \Doctrine\ORM\EntityManager
-     */
-    private $em;
+    protected AbstractDatabaseTool $databaseTool;
+    private KernelBrowser $client;
+    private EntityManager $em;
 
     /**
      * {@inheritdoc}
@@ -30,9 +29,13 @@ class ListControllerTest extends WebTestCase
     public function setUp(): void
     {
         $this->client = self::createClient();
+        $this->client->followRedirects(true);
+
         $this->em = static::$kernel->getContainer()
             ->get('doctrine')
             ->getManager();
+
+        $this->databaseTool = $this->client->getContainer()->get(DatabaseToolCollection::class)->get();
     }
 
     /**
@@ -41,10 +44,10 @@ class ListControllerTest extends WebTestCase
     public function testIndex()
     {
         // DataFixtures create 4 records
-        $this->loadFixtures([LoadScheduledCommandData::class]);
+        $this->databaseTool->loadFixtures([LoadScheduledCommandData::class]);
 
         $crawler = $this->client->request('GET', '/command-scheduler/list');
-        $this->assertEquals(4, $crawler->filter('a[href^="/command-scheduler/action/toggle/"]')->count());
+        $this->assertEquals(5, $crawler->filter('a[href^="/command-scheduler/action/toggle/"]')->count());
     }
 
     /**
@@ -53,13 +56,12 @@ class ListControllerTest extends WebTestCase
     public function testRemove()
     {
         // DataFixtures create 4 records
-        $this->loadFixtures([LoadScheduledCommandData::class]);
-
-        $this->client->followRedirects(true);
+        $this->databaseTool->loadFixtures([LoadScheduledCommandData::class]);
 
         //toggle off
         $crawler = $this->client->request('GET', '/command-scheduler/action/remove/1');
-        $this->assertEquals(3, $crawler->filter('a[href^="/command-scheduler/action/toggle/"]')->count());
+
+        $this->assertEquals(4, $crawler->filter('a[href^="/command-scheduler/action/toggle/"]')->count());
     }
 
     /**
@@ -68,17 +70,17 @@ class ListControllerTest extends WebTestCase
     public function testToggle()
     {
         // DataFixtures create 4 records
-        $this->loadFixtures([LoadScheduledCommandData::class]);
-
-        $this->client->followRedirects(true);
+        $this->databaseTool->loadFixtures([LoadScheduledCommandData::class]);
 
         //toggle off
         $crawler = $this->client->request('GET', '/command-scheduler/action/toggle/1');
-        $this->assertEquals(1, $crawler->filter('a[href="/command-scheduler/action/toggle/1"] > span[class="text-danger glyphicon glyphicon-off"]')->count());
+        $this->assertEquals(1, $crawler->filter(
+            'a[href="/command-scheduler/action/toggle/1"] > i[class="bi bi-power text-danger"]')
+            ->count());
 
         //toggle on
         $crawler = $this->client->request('GET', '/command-scheduler/action/toggle/1');
-        $this->assertEquals(0, $crawler->filter('a[href="/command-scheduler/action/toggle/1"] > span[class="text-danger glyphicon glyphicon-off"]')->count());
+        $this->assertEquals(0, $crawler->filter('a[href="/command-scheduler/action/toggle/1"] > i[class="bi bi-power text-danger"]')->count());
     }
 
     /**
@@ -87,13 +89,16 @@ class ListControllerTest extends WebTestCase
     public function testExecute()
     {
         // DataFixtures create 4 records
-        $this->loadFixtures([LoadScheduledCommandData::class]);
-
-        $this->client->followRedirects(true);
+        $this->databaseTool->loadFixtures([LoadScheduledCommandData::class]);
 
         //call execute now button
         $crawler = $this->client->request('GET', '/command-scheduler/action/execute/1');
-        $this->assertEquals(1, $crawler->filter('a[data-href="/command-scheduler/action/execute/1"] > span[class="text-muted glyphicon glyphicon-play"]')->count());
+
+        #
+        $this->assertStringContainsString('Command -CommandTestOne- will be executed during the next', $this->client->getResponse()->getContent());
+
+        //$this->assertEquals(1, $crawler->filter('a[href="/command-scheduler/action/execute/1"] > span[class="text-muted glyphicon glyphicon-play"]')->count());
+        //$this->assertEquals(1, $crawler->filterXPath('//div[contains("Command will be executed during the next")')->count());
     }
 
     /**
@@ -102,59 +107,13 @@ class ListControllerTest extends WebTestCase
     public function testUnlock()
     {
         // DataFixtures create 4 records
-        $this->loadFixtures([LoadScheduledCommandData::class]);
-
-        $this->client->followRedirects(true);
+        $this->databaseTool->loadFixtures([LoadScheduledCommandData::class]);
 
         // One command is locked in fixture (2)
         $crawler = $this->client->request('GET', '/command-scheduler/list');
-        $this->assertEquals(1, $crawler->filter('a[data-href="/command-scheduler/action/unlock/2"]')->count());
+        $this->assertEquals(1, $crawler->filter('a[href="/command-scheduler/action/unlock/2"]')->count());
 
         $crawler = $this->client->request('GET', '/command-scheduler/action/unlock/2');
-        $this->assertEquals(0, $crawler->filter('a[data-href="/command-scheduler/action/unlock/2"]')->count());
-    }
-
-    /**
-     * Test monitoring URL with json.
-     */
-    public function testMonitorWithErrors()
-    {
-        // DataFixtures create 4 records
-        $this->loadFixtures([LoadScheduledCommandData::class]);
-
-        $this->client->followRedirects(true);
-
-        // One command is locked in fixture (2), another have a -1 return code as lastReturn (4)
-        $this->client->request('GET', '/command-scheduler/monitor');
-        $this->assertEquals(Response::HTTP_EXPECTATION_FAILED, $this->client->getResponse()->getStatusCode());
-
-        $jsonResponse = $this->client->getResponse()->getContent();
-        $jsonArray = json_decode($jsonResponse, true);
-        $this->assertEquals(2, count($jsonArray));
-    }
-
-    /**
-     * Test monitoring URL with json.
-     */
-    public function testMonitorWithoutErrors()
-    {
-        // DataFixtures create 4 records
-        $this->loadFixtures([LoadScheduledCommandData::class]);
-
-        $two = $this->em->getRepository('JMoseCommandSchedulerBundle:ScheduledCommand')->find(2);
-        $four = $this->em->getRepository('JMoseCommandSchedulerBundle:ScheduledCommand')->find(4);
-        $two->setLocked(false);
-        $four->setLastReturnCode(0);
-        $this->em->flush();
-
-        $this->client->followRedirects(true);
-
-        // One command is locked in fixture (2), another have a -1 return code as lastReturn (4)
-        $this->client->request('GET', '/command-scheduler/monitor');
-        $this->assertEquals(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
-
-        $jsonResponse = $this->client->getResponse()->getContent();
-        $jsonArray = json_decode($jsonResponse, true);
-        $this->assertEquals(0, count($jsonArray));
+        $this->assertEquals(0, $crawler->filter('a[href="/command-scheduler/action/unlock/2"]')->count());
     }
 }

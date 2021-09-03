@@ -1,8 +1,8 @@
 <?php
 
-namespace JMose\CommandSchedulerBundle\Form\Type;
+namespace Dukecity\CommandSchedulerBundle\Form\Type;
 
-use JMose\CommandSchedulerBundle\Entity\ScheduledCommand;
+use Dukecity\CommandSchedulerBundle\Entity\ScheduledCommand;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\CheckboxType;
 use Symfony\Component\Form\Extension\Core\Type\HiddenType;
@@ -23,10 +23,8 @@ class ScheduledCommandType extends AbstractType
      * @param FormBuilderInterface $builder
      * @param array                $options
      */
-    public function buildForm(FormBuilderInterface $builder, array $options)
+    public function buildForm(FormBuilderInterface $builder, array $options): void
     {
-        $builder->add('id', HiddenType::class);
-
         $builder->add(
             'name',
             TextType::class,
@@ -112,23 +110,22 @@ class ScheduledCommandType extends AbstractType
     /**
      * @param OptionsResolver $resolver
      */
-    public function configureOptions(OptionsResolver $resolver)
+    public function configureOptions(OptionsResolver $resolver): void
     {
         $resolver->setDefaults(
             [
                 'data_class' => ScheduledCommand::class,
                 'wrapper_attr' => 'default_wrapper',
-                'translation_domain' => 'JMoseCommandScheduler',
+                'translation_domain' => 'DukecityCommandScheduler',
             ]
         );
     }
 
     /**
      * Fields prefix.
-     *
      * @return string
      */
-    public function getBlockPrefix()
+    public function getBlockPrefix(): string
     {
         return 'command_scheduler_detail';
     }

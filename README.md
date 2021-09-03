@@ -1,43 +1,76 @@
 CommandSchedulerBundle
 ======================
 
-[![SensioLabsInsight](https://insight.sensiolabs.com/projects/8d984140-0e19-4c4f-8b05-605025eebeb5/mini.png)](https://insight.sensiolabs.com/projects/8d984140-0e19-4c4f-8b05-605025eebeb5)
-[![Build Status](https://travis-ci.org/j-guyon/CommandSchedulerBundle.svg)](https://travis-ci.org/j-guyon/CommandSchedulerBundle)
-[![Coverage Status](https://coveralls.io/repos/J-Mose/CommandSchedulerBundle/badge.svg)](https://coveralls.io/r/J-Mose/CommandSchedulerBundle)
-[![Latest Stable Version](https://poser.pugx.org/jmose/command-scheduler-bundle/v/stable)](https://packagist.org/packages/jmose/command-scheduler-bundle)
+[![Code_Checks](https://github.com/Dukecity/CommandSchedulerBundle/actions/workflows/code_checks.yaml/badge.svg?branch=master)](https://github.com/Dukecity/CommandSchedulerBundle/actions/workflows/code_checks.yaml)
+[![codecov](https://codecov.io/gh/Dukecity/CommandSchedulerBundle/branch/master/graph/badge.svg?token=V3IZ35QH9D)](https://codecov.io/gh/Dukecity/CommandSchedulerBundle)
 
 This bundle will allow you to easily manage scheduling for Symfony's console commands (native or not) with cron expression.
+See [Wiki](https://github.com/Dukecity/CommandSchedulerBundle/wiki) for Details
 
 ## Versions & Dependencies
 
+Version 4.x has the goal to use modern Php and Symfony features and low maintenance.
+So only Php >= 8.0 and Symfony ^4.4.20|^5.3 are supported at the moment.
+
 The following table shows the compatibilities of different versions of the bundle :
 
-| Version                                                                                 | Symfony          | PHP    |
-| --------------------------------------------------------------------------------------- |  --------------- | ------ |
-| [3.0 (master)](https://github.com/J-Mose/CommandSchedulerBundle/tree/master)            | ^3.4\|^4.3\|^5.0 | >=7.2  |
-| [2.2.x](https://github.com/J-Mose/CommandSchedulerBundle/tree/2.2)                      | ^3.4\|^4.3       | >=7.1  |
-| [2.0.2](https://github.com/J-Mose/CommandSchedulerBundle/tree/v2.0.2) (unmaintained)    | ^3.4\|^4.1       | >=5.6  |
-| [1.2.x](https://github.com/J-Mose/CommandSchedulerBundle/tree/1.2) (unmaintained)       | ^2.8\|^3.0       | >=5.5  |
-| [1.1.x](https://github.com/J-Mose/CommandSchedulerBundle/tree/1.1) (unmaintained)       | ^2.3             | >=5.3  |
+| Version                                                                               | Symfony          | PHP    |
+| ------------------------------------------------------------------------------------- |  --------------- | ------ |
+| [4.0 (master)](https://github.com/Dukecity/CommandSchedulerBundle/tree/master)        | ^4.4.20\|^5.3    | >=8.0  |
+| [3.x](https://github.com/Dukecity/CommandSchedulerBundle/tree/3.x)                    | ^4.4.20\|^5.3    | >=7.3  |
+| [2.2.x](https://github.com/Dukecity/CommandSchedulerBundle/tree/2.2)                  | ^3.4\|^4.3       | ^7.1   |
 
-When using Symfony Flex there is an [installation recipe](https://github.com/symfony/recipes-contrib/tree/master/jmose/command-scheduler-bundle/2.0).  
-To use it, you have to enable contrib recipes on your project : `composer config extra.symfony.allow-contrib true`
+
+## Install
+
+When using Symfony Flex there is an [installation recipe](https://github.com/symfony/recipes-contrib/tree/master/dukecity/command-scheduler-bundle/3.0).  
+To use it, you have to enable contrib recipes on your project : 
+
+    composer config extra.symfony.allow-contrib true
+    composer req dukecity/command-scheduler-bundle
+
+#### Update Database
+
+    php bin/console make:migration
+    php bin/console doctrine:migrations:migrate
+
+#### Install Assets
+
+    php bin/console assets:install --symlink --relative public
+
+#### Secure your route
+Add this line to your security config.
+
+    - { path: ^/command-scheduler, role: ROLE_ADMIN } 
+
+Check new URL /command-scheduler/list
 
 ## Features
 
+### New in Version 4:
+- API for all functions (in development)
+- Event-Handling (preExecution, postExecution). You can subscribe to this [Events](Resources/doc/integrations/events/index.md)
+- Monitoring: Optional Notifications with the [Symfony Notifier](https://symfony.com/doc/current/notifier.html) Component. Default: E-Mail
+- Refactored Execution of Commands to Services. You can use them now from other Services.
+- Handled error in Command Parsing. So there is no 500 Error while parsing commands.
+- You CLI-commands for add, remove and list scheduled commands
+- Improved UI of command-execution in cli
+
+
+### Version 3:
 - An admin interface to add, edit, enable/disable or delete scheduled commands.
-- For each command, you define : 
+- For each command, you define :
   - name
   - symfony console command (choice based on native `list` command)
   - cron expression (see [Cron format](http://en.wikipedia.org/wiki/Cron#Format) for informations)
   - output file (for `$output->write`)
   - priority
 - A new console command `scheduler:execute [--dump] [--no-output]` which will be the single entry point to all commands
-- Management of queuing and prioritization between tasks 
+- Management of queuing and prioritization between tasks
 - Locking system, to stop scheduling a command that has returned an error
 - Monitoring with timeout or failed commands (Json URL and command with mailing)
 - Translated in french, english, german and spanish
-- An [EasyAdmin](https://github.com/EasyCorp/EasyAdminBundle) configuration template available [here](Resources/doc/index.md#6---easyadmin-integration)
+- An [EasyAdmin](https://github.com/EasyCorp/EasyAdminBundle) 2 + 3 configuration template available [here](Resources/doc/integrations/easyadmin/index.md)
 - **Beta** - Handle commands with a deamon (unix only) if you don't want to use a cronjob
 
 ## Screenshots
@@ -49,8 +82,10 @@ To use it, you have to enable contrib recipes on your project : `composer config
 
 ## Documentation
 
-See the [documentation here](Resources/doc/index.md).
+See the [documentation here](https://github.com/Dukecity/CommandSchedulerBundle/wiki).
 
 ## License
 
 This bundle is under the MIT license. See the [complete license](Resources/meta/LICENCE) for info.
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FDukecity%2FCommandSchedulerBundle.svg?type=small)](https://app.fossa.com/projects/git%2Bgithub.com%2FDukecity%2FCommandSchedulerBundle?ref=badge_small)
