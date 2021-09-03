@@ -47,10 +47,5 @@
         "psr-4": {
             "App\\Tests\\": "Tests/"
         }
-    },
-    "extra": {
-        "branch-alias": {
-            "dev-master": "dev-feature/xmbugfix as 3.0.1"
-        }
     }
 }
